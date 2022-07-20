@@ -17,37 +17,68 @@ FFMPEG_OPTIONS = {
 }
 client = commands.Bot(command_prefix='-')
 
-queue = {}
+q = {}
+
+cur_track = None
+
+
+def check_connect_user(ctx):
+    if ctx.message.author.voice:
+        return True
+    return False
 
 
 def check_queue(vc, guild_id):
-    if queue[guild_id]:
-        link = queue[guild_id].pop(0)
+    global cur_track
+
+    if q[guild_id]:
+        link, cur_track = q[guild_id].pop(0)
         vc.play(discord.FFmpegPCMAudio(source=link, **FFMPEG_OPTIONS), after=lambda x=None: check_queue(vc, guild_id))
+    else:
+        cur_track = None
+
+
+def add_queue(guild_id, link, name):
+    max_queue_size = 20
+
+    if guild_id in q:
+        if len(q[guild_id]) > max_queue_size - 1:
+            return False
+        else:
+            q[guild_id].append((link, name))
+    else:
+        q[guild_id] = [(link, name)]
+    return True
 
 
 @client.command()
 async def play(ctx, url):
     """Play audio from the Youtube link."""
+
+    if not check_connect_user(ctx):
+        await ctx.send(msg_connect_voice)
+        return
+
     vc = discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild)
     if not (vc and vc.is_connected()):
         vc = await ctx.message.author.voice.channel.connect()
-
     guild_id = vc.guild.id
 
     with YoutubeDL(YDL_OPTIONS) as ydl:
         info = ydl.extract_info(url, download=False)
     link = info['formats'][0]['url']
+    name = info['title']
+
+    global cur_track
 
     if vc.is_playing():
-        if guild_id in queue:
-            queue[guild_id].append(link)
+        if add_queue(guild_id, link, name):
+            await ctx.send(msg_queue_add)
         else:
-            queue[guild_id] = [link]
-        await ctx.send(msg_queue_add)
-
+            await ctx.send(msg_max_queue)
     else:
         vc.play(discord.FFmpegPCMAudio(source=link, **FFMPEG_OPTIONS), after=lambda x=None: check_queue(vc, guild_id))
+        cur_track = name
 
 
 @client.command()
@@ -60,6 +91,7 @@ async def pause(ctx):
     else:
         vc.pause()
         await ctx.send(msg_pause)
+
 
 @client.command()
 async def resume(ctx):
@@ -79,6 +111,35 @@ async def skip(ctx):
     server = ctx.message.guild
     vc = server.voice_client
     vc.stop()
+
+
+@client.command()
+async def clear(ctx):
+    """Clear the queue."""
+    guild_id = ctx.message.guild.id
+    q[guild_id].clear()
+    await ctx.send(msg_queue_clear)
+
+
+@client.command()
+async def current(ctx):
+    """Show playing track"""
+    if cur_track:
+        await ctx.send(f"Now playing: {cur_track}")
+    else:
+        await ctx.send(msg_nothing_playing)
+
+
+@client.command()
+async def queue(ctx):
+    """Show tracks in queue"""
+    message = ''
+    guild_id = ctx.message.guild.id
+    if guild_id in q:
+        for index, items in enumerate(q[guild_id]):
+            name = items[1]
+            message += f"{index+1}. {name}\n"
+    await ctx.send(msg_empty_queue if message == '' else message)
 
 
 @client.command()
