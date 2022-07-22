@@ -1,25 +1,11 @@
 import discord
-from youtube_dl import YoutubeDL
 from config import token
 from discord.ext import commands
 from msg import *
+from tracks_queue import play_track, add_queue, get_queue, clear_queue, get_cur_track
+from audio import check_url, get_audio, get_track
 
-YDL_OPTIONS = {
-    'format': 'bestaudio/best',
-    'noplaylist': 'False',
-    'simulate': 'True',
-    'key': 'FFmpegExtractAudio',
-}
-
-FFMPEG_OPTIONS = {
-    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-    'options': '-vn',
-}
 client = commands.Bot(command_prefix='-')
-
-q = {}
-
-cur_track = None
 
 
 def check_connect_user(ctx):
@@ -28,31 +14,14 @@ def check_connect_user(ctx):
     return False
 
 
-def check_queue(vc, guild_id):
-    global cur_track
-
-    if q[guild_id]:
-        link, cur_track = q[guild_id].pop(0)
-        vc.play(discord.FFmpegPCMAudio(source=link, **FFMPEG_OPTIONS), after=lambda x=None: check_queue(vc, guild_id))
-    else:
-        cur_track = None
-
-
-def add_queue(guild_id, link, name):
-    max_queue_size = 20
-
-    if guild_id in q:
-        if len(q[guild_id]) > max_queue_size - 1:
-            return False
-        else:
-            q[guild_id].append((link, name))
-    else:
-        q[guild_id] = [(link, name)]
+def check_connect_bot(vc):
+    if vc is None:
+        return False
     return True
 
 
 @client.command()
-async def play(ctx, url):
+async def play(ctx, *, text):
     """Play audio from the Youtube link."""
 
     if not check_connect_user(ctx):
@@ -64,21 +33,22 @@ async def play(ctx, url):
         vc = await ctx.message.author.voice.channel.connect()
     guild_id = vc.guild.id
 
-    with YoutubeDL(YDL_OPTIONS) as ydl:
-        info = ydl.extract_info(url, download=False)
-    link = info['formats'][0]['url']
-    name = info['title']
+    if check_url(text):
+        link, name = get_audio(text)
+        if not link:
+            await ctx.send(msg_invalid_url)
+            return
+    else:
+        link, name = get_track(text)
 
-    global cur_track
-
+    res_add = add_queue(guild_id, link, name)
     if vc.is_playing():
-        if add_queue(guild_id, link, name):
+        if res_add:
             await ctx.send(msg_queue_add)
         else:
             await ctx.send(msg_max_queue)
     else:
-        vc.play(discord.FFmpegPCMAudio(source=link, **FFMPEG_OPTIONS), after=lambda x=None: check_queue(vc, guild_id))
-        cur_track = name
+        play_track(vc, guild_id)
 
 
 @client.command()
@@ -86,6 +56,9 @@ async def pause(ctx):
     """Pause the playing audio."""
     server = ctx.message.guild
     vc = server.voice_client
+    if not check_connect_bot(vc):
+        await ctx.send(msg_start_play)
+        return
     if vc.is_paused():
         await ctx.send(msg_already_pause)
     else:
@@ -98,6 +71,9 @@ async def resume(ctx):
     """Continue audio playback."""
     server = ctx.message.guild
     vc = server.voice_client
+    if not check_connect_bot(vc):
+        await ctx.send(msg_start_play)
+        return
     if vc.is_playing():
         await ctx.send(msg_already_play)
     else:
@@ -110,6 +86,9 @@ async def skip(ctx):
     """Skip the current audio."""
     server = ctx.message.guild
     vc = server.voice_client
+    if not check_connect_bot(vc):
+        await ctx.send(msg_start_play)
+        return
     vc.stop()
 
 
@@ -117,13 +96,15 @@ async def skip(ctx):
 async def clear(ctx):
     """Clear the queue."""
     guild_id = ctx.message.guild.id
-    q[guild_id].clear()
+    clear_queue(guild_id)
     await ctx.send(msg_queue_clear)
 
 
 @client.command()
 async def current(ctx):
     """Show playing track"""
+    guild_id = ctx.message.guild.id
+    cur_track = get_cur_track(guild_id)
     if cur_track:
         await ctx.send(f"Now playing: {cur_track}")
     else:
@@ -133,12 +114,8 @@ async def current(ctx):
 @client.command()
 async def queue(ctx):
     """Show tracks in queue"""
-    message = ''
     guild_id = ctx.message.guild.id
-    if guild_id in q:
-        for index, items in enumerate(q[guild_id]):
-            name = items[1]
-            message += f"{index+1}. {name}\n"
+    message = get_queue(guild_id)
     await ctx.send(msg_empty_queue if message == '' else message)
 
 
@@ -147,6 +124,9 @@ async def leave(ctx):
     """The bot exits the voice channel."""
     server = ctx.message.guild
     vc = server.voice_client
+    if not check_connect_bot(vc):
+        await ctx.send(msg_no_connect)
+        return
     await vc.disconnect()
 
 
