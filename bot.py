@@ -1,9 +1,8 @@
-import discord
 from config import token
 from discord.ext import commands
 from msg import *
-from tracks_queue import play_track, add_queue, get_queue, clear_queue, get_cur_track
-from audio import check_url, get_audio, get_track
+from tracks_queue import play_track, add_queue, get_queue, clear_queue, get_cur_track, add_playlist_to_queue
+from audio import check_url, get_audio, get_audio_by_name, get_playlist
 
 client = commands.Bot(command_prefix='-')
 
@@ -28,27 +27,35 @@ async def play(ctx, *, text):
         await ctx.send(msg_connect_voice)
         return
 
-    vc = discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild)
+    vc = ctx.message.guild.voice_client
     if not (vc and vc.is_connected()):
         vc = await ctx.message.author.voice.channel.connect()
     guild_id = vc.guild.id
 
     if check_url(text):
-        link, name = get_audio(text)
+        link, name, check_playlist = get_audio(text)
         if not link:
             await ctx.send(msg_invalid_url)
             return
     else:
-        link, name = get_track(text)
+        check_playlist = False
+        link, name = get_audio_by_name(text)
 
     res_add = add_queue(guild_id, link, name)
     if vc.is_playing():
-        if res_add:
-            await ctx.send(msg_queue_add)
-        else:
-            await ctx.send(msg_max_queue)
+        if not check_playlist:
+            if res_add:
+                await ctx.send(msg_queue_add)
+            else:
+                await ctx.send(msg_max_queue)
     else:
+        res_add = False  # used to compile the total amount of tracks added from the playlist
         play_track(vc, guild_id)
+
+    if check_playlist:
+        res, playlist_size = add_playlist_to_queue(guild_id, get_playlist(text, guild_id), res_add)
+        await ctx.send(msg_playlist_add(playlist_size) if res else msg_incomplete_playlist_add(playlist_size))
+        # установить нормальный макс размер очереди
 
 
 @client.command()
@@ -115,8 +122,9 @@ async def current(ctx):
 async def queue(ctx):
     """Show tracks in queue"""
     guild_id = ctx.message.guild.id
-    message = get_queue(guild_id)
-    await ctx.send(msg_empty_queue if message == '' else message)
+    messages = get_queue(guild_id)
+    for message in messages:
+        await ctx.send(msg_empty_queue if message == '' else message)
 
 
 @client.command()

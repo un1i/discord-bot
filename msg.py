@@ -34,7 +34,7 @@ msg_resume = "Playback has resumed!"
 
 msg_queue_clear = "The queue cleared!"
 
-msg_max_queue = "You can't add a track. The maximum queue size is 20."
+msg_max_queue = "You can't add a track. The maximum queue size is 50."
 
 msg_empty_queue = "No tracks in the queue."
 
@@ -45,3 +45,25 @@ msg_start_play = "Run the track to use this command!"
 msg_no_connect = "The bot is not connected to the voice channel!"
 
 msg_invalid_url = "The link is not valid!"
+
+
+def msg_playlist_add(playlist_size):
+    if playlist_size > 1:
+        msg = f"{playlist_size} tracks added to the queue."
+    else:
+        msg = f"{playlist_size} track added to the queue."
+    return msg
+
+
+def msg_incomplete_playlist_add(playlist_size):
+    if playlist_size > 1:
+        msg = f"Only {playlist_size} tracks have been added because the maximum queue size is 50."
+    elif playlist_size == 1:
+        msg = f"Only {playlist_size} track have been added because the maximum queue size is 50."
+    else:
+        msg = "You can't add a track. The maximum queue size is 50."
+
+    return msg
+
+
+
