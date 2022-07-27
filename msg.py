@@ -1,5 +1,4 @@
 msg_help = """
-commands:
 -play "youtube link" 
 The bot connects to the voice channel and turns on the audio via the youtube link or by the track name, if the audio is\
  already playing, the bot adds the track to the queue.
@@ -45,6 +44,10 @@ msg_start_play = "Run the track to use this command!"
 msg_no_connect = "The bot is not connected to the voice channel!"
 
 msg_invalid_url = "The link is not valid!"
+
+msg_invalid_command = "This command does not exist.\nUse -help to view the available commands."
+
+msg_error = "Something went wrong..."
 
 
 def msg_playlist_add(playlist_size):

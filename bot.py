@@ -1,10 +1,13 @@
+import asyncio
 from config import token
 from discord.ext import commands
 from msg import *
-from tracks_queue import play_track, add_queue, get_queue, clear_queue, get_cur_track, add_playlist_to_queue
+from tracks_queue import play_track, add_queue, get_queue, clear_queue, get_cur_track, add_playlist_to_queue, \
+    check_activity
 from audio import check_url, get_audio, get_audio_by_name, get_playlist
 
 client = commands.Bot(command_prefix='-')
+client.remove_command('help')
 
 
 def check_connect_user(ctx):
@@ -19,8 +22,16 @@ def check_connect_bot(vc):
     return True
 
 
+@client.event
+async def on_ready():
+    time_sleep = 60
+    while True:
+        asyncio.run_coroutine_threadsafe(check_activity(), client.loop)
+        await asyncio.sleep(time_sleep)
+
+
 @client.command()
-async def play(ctx, *, text):
+async def play(ctx,  *, text):
     """Play audio from the Youtube link."""
 
     if not check_connect_user(ctx):
@@ -55,7 +66,6 @@ async def play(ctx, *, text):
     if check_playlist:
         res, playlist_size = add_playlist_to_queue(guild_id, get_playlist(text, guild_id), res_add)
         await ctx.send(msg_playlist_add(playlist_size) if res else msg_incomplete_playlist_add(playlist_size))
-        # установить нормальный макс размер очереди
 
 
 @client.command()
@@ -139,10 +149,14 @@ async def leave(ctx):
 
 
 @client.command()
-async def commands(ctx):
-    """More information about the commands"""
+async def help(ctx):
     await ctx.send(msg_help)
 
+
+@client.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.CommandNotFound):
+        await ctx.send(msg_invalid_command)
 
 if __name__ == '__main__':
     client.run(token)

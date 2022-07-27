@@ -3,6 +3,7 @@ import discord
 max_queue_size = 50
 queue = {}
 cur_track = {}
+inactive_voice_clients = {}
 
 FFMPEG_OPTIONS = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
@@ -19,12 +20,15 @@ def get_available_space(guild_id):
 
 
 def play_track(vc, guild_id):
-
+    if vc in inactive_voice_clients:
+        del inactive_voice_clients[vc]
     if queue[guild_id]:
         link, cur_track[guild_id] = queue[guild_id].pop(0)
         vc.play(discord.FFmpegPCMAudio(source=link, **FFMPEG_OPTIONS), after=lambda x=None: play_track(vc, guild_id))
     else:
         cur_track[guild_id] = None
+        inactive_voice_clients[vc] = False
+        del queue[guild_id]
 
 
 def add_queue(guild_id, link, name):
@@ -66,7 +70,7 @@ def get_cur_track(guild_id):
 
 
 def add_playlist_to_queue(guild_id, playlist, additional_track):
-    available_space = max_queue_size - len(queue.get(guild_id, 0))
+    available_space = max_queue_size - len(queue.get(guild_id, []))
 
     if guild_id in queue:
         queue[guild_id] += playlist[:available_space]
@@ -82,3 +86,13 @@ def add_playlist_to_queue(guild_id, playlist, additional_track):
         if additional_track:
             available_space += 1
         return False, available_space
+
+
+async def check_activity():
+    for vc, res in inactive_voice_clients.items():
+        if res:
+            del inactive_voice_clients[vc]
+            await vc.disconnect()
+        else:
+            inactive_voice_clients[vc] = True
+
